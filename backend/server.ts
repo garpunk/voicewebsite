@@ -1,13 +1,9 @@
 // backend/server.ts
-import dotenv from 'dotenv';
-import express, { Express } from 'express';
-//import multer from 'multer';
+
+import express, { Express, Request } from 'express';
 import multer, { FileFilterCallback } from 'multer';
 import path from 'path';
-import { Request } from 'express';
 import fs from 'fs';
-
-//const fs = require('fs');
 
 const db = require('./db');
 const cors = require('cors');
@@ -15,7 +11,7 @@ const cors = require('cors');
 const app: Express = express();
 app.use(express.json());
 
-//enable CORS for frontend
+// enable CORS for frontend
 app.use(cors());
 
 /* ====================
