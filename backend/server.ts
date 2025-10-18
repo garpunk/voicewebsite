@@ -174,8 +174,65 @@ app.get('/voiceovers/category/:id', async (req, res) => {
   }
 });
 
+/* ==========================================
+   7. Search Voiceovers by Name or Description
+   ========================================== */
+
+app.get('/voiceovers/search', async (req, res) => {
+  try {
+    const { q } = req.query;
+    console.log('🔎 Search query received:', q);
+
+    // If no search term provided, return all voiceovers
+    if (!q) {
+      console.log('No search query, returning all voiceovers.');
+      const [rows] = await db.query('SELECT * FROM voiceover');
+      console.log('Returned', rows.length, 'voiceovers');
+      return res.json(rows);
+    }
+
+    const searchTerm = `%${q}%`;
+
+    // Check if 'description' column exists in table
+    const [columns]: any = await db.query(
+      "SHOW COLUMNS FROM voiceover LIKE 'description'"
+    );
+    const hasDescription = columns.length > 0;
+
+    // Build SQL depending on whether description exists
+    let sql: string;
+    let params: any[];
+    if (hasDescription) {
+      sql = `
+        SELECT * 
+        FROM voiceover 
+        WHERE voiceover_name LIKE ? OR description LIKE ?
+      `;
+      params = [searchTerm, searchTerm];
+    } else {
+      sql = `
+        SELECT * 
+        FROM voiceover 
+        WHERE voiceover_name LIKE ?
+      `;
+      params = [searchTerm];
+    }
+
+    const [rows] = await db.query(sql, params);
+    console.log('✅ Search results:', rows.length, 'matches');
+    res.json(rows);
+  } catch (err) {
+    console.error('❌ Error in /voiceovers/search route:', err);
+    if (err instanceof Error) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.status(500).json({ error: String(err) });
+    }
+  }
+});
+
 /* ==========================
-   7. Auto-sync uploads to DB
+   8. Auto-sync uploads to DB
    ========================== */
 async function syncUploads() {
   try {
@@ -207,7 +264,7 @@ async function syncUploads() {
 }
 
 /* ===================
-   8. Start the server
+   9. Start the server
    =================== */
 app.listen(3000, async () => {
   console.log('Server running on port 3000');
