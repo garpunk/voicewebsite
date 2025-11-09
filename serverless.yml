@@ -1,0 +1,53 @@
+service: voiceover-api
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: us-east-1 # Or your preferred region
+  stage: dev
+  profile: serverless-user
+  environment:
+    S3_BUCKET_NAME: my-voiceover-uploads-2025 # 👈 PUT YOUR S3 UPLOAD BUCKET NAME HERE
+    DYNAMODB_TABLE_NAME: Voiceovers # 👈 PUT YOUR DYNAMODB TABLE NAME HERE
+
+  # Grant your Lambda function permission to access S3 and DynamoDB
+  iam:
+    role:
+      statements:
+        - Effect: "Allow"
+          Action:
+            - "dynamodb:Scan"
+            - "dynamodb:PutItem"
+          Resource: "arn:aws:dynamodb:${aws:region}:*:table/${self:provider.environment.DYNAMODB_TABLE_NAME}"
+        - Effect: "Allow"
+          Action:
+            - "s3:PutObject"
+            - "s3:GetObject"
+          Resource: "arn:aws:s3:::${self:provider.environment.S3_BUCKET_NAME}/*"
+
+package:
+  patterns:
+    # - "!node_modules/**" # Exclude node_modules from the zip (it will be installed by AWS)
+    - "!frontend/**"
+    - "!.vscode/**"
+    - "!.git/**"
+
+functions: # <--- ONLY ONE "functions:" section
+  # 1. Main API Function (Existing)
+  api:
+    handler: dist/server.handler # Points to the compiled JS file and the 'handler' export
+    events:
+      - httpApi: "*" # Creates an API Gateway that proxies ALL requests to your app
+
+  # 2. New Sync Function (for automation)
+  syncS3Metadata:
+    handler: dist/syncS3.handler # 👈 Point to a new file, syncS3.ts
+    events:
+      - s3:
+          bucket: ${self:provider.environment.S3_BUCKET_NAME} # Your uploads bucket
+          event: s3:ObjectCreated:* # Trigger on any object creation
+          existing: true
+          rules:
+            # Note: The 'uploads/' prefix rule is only necessary if your files are indeed
+            # uploaded into an 'uploads' sub-folder within your S3 bucket.
+            - suffix: .mp3

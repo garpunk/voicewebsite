@@ -1,47 +1,62 @@
 // backend/server.ts
-
+import 'dotenv/config'; // Make sure dotenv is loaded first
 import express, { Express, Request } from 'express';
 import multer, { FileFilterCallback } from 'multer';
 import path from 'path';
-import fs from 'fs';
+import { fileURLToPath } from 'url';
+import cors from 'cors';
+import { randomUUID } from 'crypto'; // To create unique IDs
+import { Readable } from 'stream';
+import serverless from 'serverless-http';
 
-const db = require('./db');
-const cors = require('cors');
+// --- AWS SDK Imports ---
+import db from './db.js'; // Our new DynamoDB client
+import {
+  PutObjectCommand,
+  S3Client,
+  GetObjectCommand,
+} from '@aws-sdk/client-s3';
+import {
+  PutCommand,
+  ScanCommand,
+  QueryCommandInput,
+} from '@aws-sdk/lib-dynamodb';
+
+// --- Fix for __dirname in ES Modules ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app: Express = express();
+
+const corsOptions = {
+    origin: '*', // 👈 REPLACE with your actual S3 endpoint
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true, // If you need cookies/auth later
+    optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
-// enable CORS for frontend
-app.use(cors());
+
+
+
+// --- AWS Client and Config ---
+const BUCKET_NAME = process.env.S3_BUCKET_NAME!;
+const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME!;
+const s3Client = new S3Client({ region: process.env.AWS_REGION });
 
 /* ====================
-   1. Serve Frontend
+   1. Serve Frontend (Unchanged)
    ==================== */
 app.use(express.static(path.join(__dirname, '../frontend')));
 
 /* ====================
-   2. File Upload Setup
+   2. File Upload Setup (Changed)
    ==================== */
-const uploadDir = path.join(__dirname, 'uploads');
+// We now use 'memoryStorage' to process the file in memory, not save it to disk.
+const storage = multer.memoryStorage();
 
-const storage = multer.diskStorage({
-  destination: (
-    req: Request,
-    file: Express.Multer.File,
-    cb: (error: Error | null, destination: string) => void
-  ) => {
-    cb(null, uploadDir);
-  },
-  filename: (
-    req: Request,
-    file: Express.Multer.File,
-    cb: (error: Error | null, filename: string) => void
-  ) => {
-    cb(null, Date.now() + '-' + file.originalname);
-  },
-});
-
-// Optional: filter only audio files
 const fileFilter = (
   req: Request,
   file: Express.Multer.File,
@@ -54,7 +69,6 @@ const fileFilter = (
   }
 };
 
-// Limit uploads to 10 MB
 const upload = multer({
   storage,
   fileFilter,
@@ -62,19 +76,39 @@ const upload = multer({
 });
 
 /* ============================
-   3. Upload MP3 & Save to DB
+   3. Upload MP3 (Refactored for S3 & DynamoDB)
    ============================ */
 app.post('/upload', upload.single('voiceover'), async (req, res) => {
   try {
     const { voiceover_name, project_date } = req.body;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    const file_name = req.file.filename;
+    // 1. Create a unique filename
+    const file_name = `${Date.now()}-${req.file.originalname}`;
 
-    await db.query(
-      'INSERT INTO voiceover (voiceover_name, project_date, date_uploaded, file_name) VALUES (?, ?, NOW(), ?)',
-      [voiceover_name, project_date, file_name]
-    );
+    // 2. Upload the file to S3
+    const s3Params = {
+      Bucket: BUCKET_NAME,
+      Key: file_name, // The name of the file in S3
+      Body: req.file.buffer, // The actual file data from multer
+      ContentType: 'audio/mpeg',
+    };
+    await s3Client.send(new PutObjectCommand(s3Params));
+
+    // 3. Save metadata to DynamoDB
+    const newId = randomUUID();
+    const dbParams = {
+      TableName: TABLE_NAME,
+      Item: {
+        id: newId, // Our new UUID partition key
+        voiceover_name: voiceover_name,
+        project_date: project_date,
+        date_uploaded: new Date().toISOString(),
+        file_name: file_name, // The S3 key
+      },
+    };
+    await db.send(new PutCommand(dbParams));
+
     res.json({ message: 'Voiceover uploaded successfully!' });
   } catch (err) {
     if (err instanceof Error) {
@@ -86,47 +120,50 @@ app.post('/upload', upload.single('voiceover'), async (req, res) => {
 });
 
 /* ========================
-   4. Stream MP3 files safely
+   4. Stream MP3 (Refactored for S3)
    ======================== */
-app.get('/stream/:filename', (req, res) => {
+app.get('/stream/:filename', async (req, res) => {
   try {
-    const filename = path.basename(req.params.filename);
-    const filePath = path.join(uploadDir, filename);
+    let encodedFilename = req.params.filename.replace(/\+/g, '%20');
 
-    if (!fs.existsSync(filePath)) return res.status(404).send('File not found');
+    const filename = decodeURIComponent(encodedFilename);
 
-    fs.stat(
-      filePath,
-      (err: NodeJS.ErrnoException | null, stat: fs.Stats | undefined) => {
-        if (err || !stat) return res.status(500).send(err?.message);
+    // Check if the file has any slashes (to avoid directory traversal)
+    if (filename.includes('/') || filename.includes('..')) {
+      return res.status(400).send('Invalid filename.');
+    }
 
-        const fileSize = stat.size;
-        const range = req.headers.range;
+    const s3Params = {
+      Bucket: BUCKET_NAME,
+      Key: filename,
+    };
 
-        if (range) {
-          const parts = range.replace(/bytes=/, '').split('-');
-          const start = parseInt(parts[0], 10);
-          const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-          const chunksize = end - start + 1;
+    const s3Object = await s3Client.send(new GetObjectCommand(s3Params));
 
-          const stream = fs.createReadStream(filePath, { start, end });
-          res.writeHead(206, {
-            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-            'Accept-Ranges': 'bytes',
-            'Content-Length': chunksize,
-            'Content-Type': 'audio/mpeg',
-          });
-          stream.pipe(res);
-        } else {
-          res.writeHead(200, {
-            'Content-Length': fileSize,
-            'Content-Type': 'audio/mpeg',
-          });
-          fs.createReadStream(filePath).pipe(res);
-        }
-      }
-    );
+    // --- THIS IS THE FIX ---
+    // Check if the body exists and is an instance of a readable stream
+    if (s3Object.Body instanceof Readable) {
+      // Set headers for streaming audio
+      res.writeHead(200, {
+        'Content-Type': s3Object.ContentType || 'audio/mpeg',
+        'Content-Length': s3Object.ContentLength || 0,
+        'Accept-Ranges': 'bytes',
+        'Content-Disposition': `inline; filename="${req.params.filename}"`,
+      });
+
+      // Pipe the S3 stream directly to the response
+      s3Object.Body.pipe(res);
+    } else {
+      // Handle the case where the body isn't a stream
+      throw new Error('S3 object body is not a readable stream.');
+    }
+    // --- END FIX ---
+
   } catch (err) {
+    // Handle "NoSuchKey" error if file not found in S3
+    if (err instanceof Error && err.name === 'NoSuchKey') {
+      return res.status(404).send('File not found');
+    }
     if (err instanceof Error) {
       res.status(500).json({ error: err.message });
     } else {
@@ -136,12 +173,16 @@ app.get('/stream/:filename', (req, res) => {
 });
 
 /* ==========================
-   5. List All Voiceovers
+   5. List All Voiceovers (Refactored for DynamoDB)
    ========================== */
 app.get('/voiceovers', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM voiceover');
-    res.json(rows);
+    const params = {
+      TableName: TABLE_NAME,
+    };
+    // A 'Scan' operation reads every item in the table.
+    const data = await db.send(new ScanCommand(params));
+    res.json(data.Items); // 'Items' contains the array of objects
   } catch (err) {
     if (err instanceof Error) {
       res.status(500).json({ error: err.message });
@@ -152,75 +193,61 @@ app.get('/voiceovers', async (req, res) => {
 });
 
 /* ==========================================
-   6. Filter Voiceovers by Category (optional)
+   6. Filter by Category (Refactored for DynamoDB)
    ========================================== */
+// NOTE: Joining tables isn't a concept in DynamoDB.
+// This would require a different data model, e.g., adding a 'categoryId'
+// attribute to the main 'Voiceovers' table.
+// For now, this route will be difficult to implement without a
+// schema change. This is a key difference from SQL.
+// I've left this commented out as it requires a deeper design choice.
+/*
 app.get('/voiceovers/category/:id', async (req, res) => {
-  try {
-    const categoryId = req.params.id;
-    const sql = `
-      SELECT v.* 
-      FROM voiceover v
-      JOIN category_has_voiceover cv ON v.voiceover_id = cv.voiceover_id
-      WHERE cv.category_id = ?
-    `;
-    const [rows] = await db.query(sql, [categoryId]);
-    res.json(rows);
-  } catch (err) {
-    if (err instanceof Error) {
-      res.status(500).json({ error: err.message });
-    } else {
-      res.status(500).json({ error: String(err) });
-    }
-  }
+  // To do this in DynamoDB, you'd likely use a Global Secondary Index (GSI)
+  // on 'category_id' and query that index.
+  res.status(501).json({ message: 'Not implemented for DynamoDB yet' });
 });
+*/
 
 /* ==========================================
-   7. Search Voiceovers by Name or Description
+   7. Search Voiceovers (Refactored for DynamoDB)
    ========================================== */
-
 app.get('/voiceovers/search', async (req, res) => {
   try {
     const { q } = req.query;
-    console.log('🔎 Search query received:', q);
 
-    // If no search term provided, return all voiceovers
     if (!q) {
-      console.log('No search query, returning all voiceovers.');
-      const [rows] = await db.query('SELECT * FROM voiceover');
-      console.log('Returned', rows.length, 'voiceovers');
-      return res.json(rows);
+      // If no query, just return all (same as /voiceovers)
+      const data = await db.send(new ScanCommand({ TableName: TABLE_NAME }));
+      return res.json(data.Items);
     }
 
-    const searchTerm = `%${q}%`;
+    const searchTerm = String(q).toLowerCase();
 
-    // Check if 'description' column exists in table
-    const [columns]: any = await db.query(
-      "SHOW COLUMNS FROM voiceover LIKE 'description'"
-    );
-    const hasDescription = columns.length > 0;
+    // In DynamoDB, 'Scan' is less efficient for search as it reads all items.
+    // A better way is using a full-text search service like OpenSearch,
+    // but for a small app, a Scan with a FilterExpression is fine.
+    const params: QueryCommandInput = {
+      TableName: TABLE_NAME,
+      FilterExpression:
+        'contains(voiceover_name, :q) OR contains(description, :q)', // Assuming 'description' might exist
+      ExpressionAttributeValues: {
+        ':q': searchTerm,
+      },
+    };
 
-    // Build SQL depending on whether description exists
-    let sql: string;
-    let params: any[];
-    if (hasDescription) {
-      sql = `
-        SELECT * 
-        FROM voiceover 
-        WHERE voiceover_name LIKE ? OR description LIKE ?
-      `;
-      params = [searchTerm, searchTerm];
-    } else {
-      sql = `
-        SELECT * 
-        FROM voiceover 
-        WHERE voiceover_name LIKE ?
-      `;
-      params = [searchTerm];
-    }
+    // We'll have to adjust if 'description' doesn't exist.
+    // For simplicity, let's just search 'voiceover_name'
+    const simpleParams = {
+      TableName: TABLE_NAME,
+      FilterExpression: 'contains(voiceover_name, :q)',
+      ExpressionAttributeValues: {
+        ':q': searchTerm,
+      },
+    };
 
-    const [rows] = await db.query(sql, params);
-    console.log('✅ Search results:', rows.length, 'matches');
-    res.json(rows);
+    const data = await db.send(new ScanCommand(simpleParams));
+    res.json(data.Items);
   } catch (err) {
     console.error('❌ Error in /voiceovers/search route:', err);
     if (err instanceof Error) {
@@ -231,42 +258,24 @@ app.get('/voiceovers/search', async (req, res) => {
   }
 });
 
-/* ==========================
-   8. Auto-sync uploads to DB
-   ========================== */
-async function syncUploads() {
-  try {
-    const files = fs.readdirSync(uploadDir).filter((f) => f.endsWith('.mp3'));
-
-    for (const file of files) {
-      const [rows] = await db.query(
-        'SELECT * FROM voiceover WHERE file_name = ?',
-        [file]
-      );
-
-      if (rows.length === 0) {
-        console.log(`Adding new file to DB: ${file}`);
-        await db.query(
-          'INSERT INTO voiceover (voiceover_name, date_uploaded, project_date, file_name) VALUES (?, NOW(), NOW(), ?)',
-          [path.parse(file).name, file]
-        );
-      }
-    }
-
-    console.log('✅ Uploads synced to DB');
-  } catch (err) {
-    if (err instanceof Error) {
-      console.error('❌ Error syncing uploads:', err.message);
-    } else {
-      console.error('❌ Unknown error syncing uploads:', err);
-    }
-  }
-}
 
 /* ===================
-   9. Start the server
+   8. Start the server (Sync removed)
    =================== */
-app.listen(3000, async () => {
-  console.log('Server running on port 3000');
-  await syncUploads(); // auto-sync uploads after server starts
+const PORT = process.env.PORT || 3000; // Use the environment variable, default to 3000
+
+export const handler = serverless(app, {
+    binary: [
+        'audio/mpeg',
+        'audio/mp3',
+        '*/*', // Catch-all for safety, but audio/mpeg is the focus
+    ],
 });
+
+//not sure if we'll need this again:
+
+/*app.listen(PORT, async () => {
+    console.log(`Server running on port ${PORT}`);
+  console.log('Using S3 Bucket:', BUCKET_NAME);
+  console.log('Using DynamoDB Table:', TABLE_NAME);
+});*/

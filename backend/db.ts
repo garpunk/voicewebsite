@@ -1,18 +1,26 @@
-// db.js
+// db.ts
 
-require('dotenv').config();
-const mysql = require('mysql2');
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 
-// Create a connection pool for better performance
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-});
+import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 
-// Export for use in other files
-module.exports = pool.promise();
+
+
+// Set your AWS region
+
+const REGION = process.env.AWS_REGION || 'us-east-1';
+
+
+
+const client = new DynamoDBClient({ region: REGION });
+
+
+
+// This "DocumentClient" makes it easier to work with JSON objects
+
+const db = DynamoDBDocumentClient.from(client);
+
+
+
+export default db;
+
