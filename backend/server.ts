@@ -279,3 +279,5 @@ export const handler = serverless(app, {
   console.log('Using S3 Bucket:', BUCKET_NAME);
   console.log('Using DynamoDB Table:', TABLE_NAME);
 });*/
+
+//commit random
