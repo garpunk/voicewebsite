@@ -1,1 +1,11 @@
+# Node modules
+node_modules/
+
+# Local environment variables
 .env
+
+# Serverless Framework build artifacts (THIS IS THE FIX)
+.serverless/
+
+# TypeScript build output
+dist/
