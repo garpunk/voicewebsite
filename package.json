@@ -6,15 +6,18 @@
   "scripts": {
     "dev": "ts-node backend/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "deploy:frontend": "aws s3 sync ./frontend s3://my-voiceover-frontend-2025 --delete --acl public-read",
+    "deploy:full": "npm run build && sls deploy && npm run deploy:frontend"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.676.0",
+    "@aws-sdk/client-s3": "^3.929.0",
     "@aws-sdk/lib-dynamodb": "^3.676.0",
+    "@aws-sdk/s3-request-presigner": "^3.929.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^5.1.0",

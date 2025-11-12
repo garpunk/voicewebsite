@@ -32,22 +32,23 @@ package:
     - "!.vscode/**"
     - "!.git/**"
 
-functions: # <--- ONLY ONE "functions:" section
+functions:
   # 1. Main API Function (Existing)
   api:
-    handler: dist/server.handler # Points to the compiled JS file and the 'handler' export
+    handler: dist/server.handler
     events:
-      - httpApi: "*" # Creates an API Gateway that proxies ALL requests to your app
+      # Use httpApi for a modern API Gateway (note: CORS is handled by Express/server.ts)
+      - httpApi: "*"
+      # You can remove the 'cors: true' line here as it won't work for httpApi events
 
   # 2. New Sync Function (for automation)
   syncS3Metadata:
-    handler: dist/syncS3.handler # 👈 Point to a new file, syncS3.ts
+    handler: dist/syncS3.handler # 👈 Handler for S3 events
     events:
       - s3:
-          bucket: ${self:provider.environment.S3_BUCKET_NAME} # Your uploads bucket
-          event: s3:ObjectCreated:* # Trigger on any object creation
+          bucket: ${self:provider.environment.S3_BUCKET_NAME}
+          event: s3:ObjectCreated:*
           existing: true
           rules:
-            # Note: The 'uploads/' prefix rule is only necessary if your files are indeed
-            # uploaded into an 'uploads' sub-folder within your S3 bucket.
+            # Only trigger for MP3 uploads
             - suffix: .mp3

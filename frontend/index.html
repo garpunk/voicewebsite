@@ -13,6 +13,26 @@
       <input id="search-bar" type="text" placeholder="Search.." />
     </div>
 
+    <div class="upload-container">
+      <h2>Add New Voiceover & Thumbnail</h2>
+      <form id="upload-form" enctype="multipart/form-data">
+        
+        <label for="voiceover-name">Voiceover Name:</label>
+        <input type="text" id="voiceover-name" name="voiceover_name" required /><br />
+
+        <label for="project-date">Project Date:</label>
+        <input type="date" id="project-date" name="project_date" required /><br />
+
+        <label for="voiceover-file">MP3 File (voiceover):</label>
+        <input type="file" id="voiceover-file" name="voiceover" accept="audio/mpeg,audio/mp3" required /><br />
+
+        <label for="thumbnail-file">Thumbnail Image:</label>
+        <input type="file" id="thumbnail-file" name="thumbnail" accept="image/*" required /><br />
+
+        <button type="submit">Upload Voiceover</button>
+      </form>
+      <hr>
+    </div>
     <div id="voiceover-list"></div>
 
     <script src="js/voiceovers.js"></script>
