@@ -1,13 +1,12 @@
-// backend/server.ts
-import 'dotenv/config'; // Make sure dotenv is loaded first
+import 'dotenv/config';
 import express from 'express';
-import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
-import { randomUUID } from 'crypto'; // To create unique IDs
+import { randomUUID } from 'crypto'; // Used for better unique IDs
 import { Readable } from 'stream';
 import serverless from 'serverless-http';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 // --- AWS SDK Imports ---
 import db from './db.js'; // Our new DynamoDB client
 import { PutObjectCommand, S3Client, GetObjectCommand, } from '@aws-sdk/client-s3';
@@ -16,84 +15,89 @@ import { PutCommand, ScanCommand, } from '@aws-sdk/lib-dynamodb';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
+// --- CORS Configuration ---
+const S3_FRONTEND_URL = process.env.FRONTEND_URL || '*'; // 👈 Use a new ENV variable or set a fixed URL
 const corsOptions = {
-    origin: '*', // 👈 REPLACE with your actual S3 endpoint
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true, // If you need cookies/auth later
+    origin: S3_FRONTEND_URL, // Setting to the actual frontend URL
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE', // PUT is required for direct S3 upload
+    credentials: true,
     optionsSuccessStatus: 204
 };
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json()); // Essential for receiving the JSON metadata in /upload-request
 // --- AWS Client and Config ---
 const BUCKET_NAME = process.env.S3_BUCKET_NAME;
 const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME;
 const s3Client = new S3Client({ region: process.env.AWS_REGION });
 /* ====================
+
    1. Serve Frontend (Unchanged)
+
    ==================== */
-app.use(express.static(path.join(__dirname, '../frontend')));
+//app.use(express.static(path.join(__dirname, '../frontend')));
 /* ====================
-   2. File Upload Setup (Changed)
+
+   2. File Upload Setup (REMOVED: Multer logic is gone)
+
    ==================== */
-// We now use 'memoryStorage' to process the file in memory, not save it to disk.
-const storage = multer.memoryStorage();
-const fileFilter = (req, file, cb) => {
-    if (file.mimetype === 'audio/mpeg' || file.mimetype === 'audio/mp3') {
-        cb(null, true);
-    }
-    else {
-        cb(new Error('Only MP3 files are allowed'));
-    }
-};
-const upload = multer({
-    storage,
-    fileFilter,
-    limits: { fileSize: 10 * 1024 * 1024 },
-});
 /* ============================
-   3. Upload MP3 (Refactored for S3 & DynamoDB)
+
+   3. Request Presigned URLs (New multi-file version)
+
    ============================ */
-app.post('/upload', upload.single('voiceover'), async (req, res) => {
+app.post('/upload-request', async (req, res) => {
     try {
-        const { voiceover_name, project_date } = req.body;
-        if (!req.file)
-            return res.status(400).json({ error: 'No file uploaded' });
-        // 1. Create a unique filename
-        const file_name = `${Date.now()}-${req.file.originalname}`;
-        // 2. Upload the file to S3
-        const s3Params = {
+        // We expect the frontend to send us the metadata AND the final S3 keys it intends to use
+        const { mp3FileName, thumbFileName, voiceover_name, project_date, mp3ContentType, thumbContentType } = req.body;
+        if (!mp3FileName || !thumbFileName || !voiceover_name || !project_date) {
+            return res.status(400).json({ error: 'Missing required metadata.' });
+        }
+        // 1. Generate Presigned URL for MP3 (Client will use HTTP PUT)
+        const mp3Command = new PutObjectCommand({
             Bucket: BUCKET_NAME,
-            Key: file_name, // The name of the file in S3
-            Body: req.file.buffer, // The actual file data from multer
-            ContentType: 'audio/mpeg',
-        };
-        await s3Client.send(new PutObjectCommand(s3Params));
-        // 3. Save metadata to DynamoDB
-        const newId = randomUUID();
+            Key: mp3FileName,
+            ContentType: mp3ContentType,
+        });
+        const mp3URL = await getSignedUrl(s3Client, mp3Command, { expiresIn: 300 });
+        // 2. Generate Presigned URL for Thumbnail (Client will use HTTP PUT)
+        const thumbCommand = new PutObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: thumbFileName,
+            ContentType: thumbContentType,
+        });
+        const thumbURL = await getSignedUrl(s3Client, thumbCommand, { expiresIn: 300 });
+        // 3. Save initial metadata to DynamoDB immediately (Placeholder for S3 event)
+        const newId = randomUUID(); // 👈 Using the better UUID generator
         const dbParams = {
             TableName: TABLE_NAME,
             Item: {
-                id: newId, // Our new UUID partition key
+                id: newId,
                 voiceover_name: voiceover_name,
                 project_date: project_date,
                 date_uploaded: new Date().toISOString(),
-                file_name: file_name, // The S3 key
+                file_name: mp3FileName,
+                thumbnail_key: thumbFileName,
+                // status: 'UPLOAD_REQUESTED', // New field to track status
+                status: 'COMPLETE',
             },
         };
         await db.send(new PutCommand(dbParams));
-        res.json({ message: 'Voiceover uploaded successfully!' });
+        // Return the secure URLs to the client for the direct S3 upload
+        res.json({
+            mp3URL,
+            thumbURL,
+            itemId: newId // Return the ID so the client can reference it if needed
+        });
     }
     catch (err) {
-        if (err instanceof Error) {
-            res.status(500).json({ error: err.message });
-        }
-        else {
-            res.status(500).json({ error: String(err) });
-        }
+        console.error('Error in /upload-request:', err);
+        res.status(500).json({ error: 'Failed to generate upload links.' });
     }
 });
 /* ========================
+
    4. Stream MP3 (Refactored for S3)
+
    ======================== */
 app.get('/stream/:filename', async (req, res) => {
     try {
@@ -140,8 +144,37 @@ app.get('/stream/:filename', async (req, res) => {
         }
     }
 });
+// backend/server.ts (New route for serving thumbnails)
+app.get('/thumbnail/:key', async (req, res) => {
+    try {
+        const key = decodeURIComponent(req.params.key); // Use the decoding fix
+        const s3Params = {
+            Bucket: BUCKET_NAME,
+            Key: key,
+        };
+        const s3Object = await s3Client.send(new GetObjectCommand(s3Params));
+        if (s3Object.Body instanceof Readable) {
+            res.writeHead(200, {
+                'Content-Type': s3Object.ContentType || 'image/jpeg',
+                'Content-Length': s3Object.ContentLength,
+            });
+            s3Object.Body.pipe(res);
+        }
+        else {
+            res.status(500).send('Error streaming image.');
+        }
+    }
+    catch (err) {
+        if (err instanceof Error && err.name === 'NoSuchKey') {
+            return res.status(404).send('Thumbnail not found');
+        }
+        res.status(500).json({ error: String(err) });
+    }
+});
 /* ==========================
+
    5. List All Voiceovers (Refactored for DynamoDB)
+
    ========================== */
 app.get('/voiceovers', async (req, res) => {
     try {
@@ -162,23 +195,9 @@ app.get('/voiceovers', async (req, res) => {
     }
 });
 /* ==========================================
-   6. Filter by Category (Refactored for DynamoDB)
-   ========================================== */
-// NOTE: Joining tables isn't a concept in DynamoDB.
-// This would require a different data model, e.g., adding a 'categoryId'
-// attribute to the main 'Voiceovers' table.
-// For now, this route will be difficult to implement without a
-// schema change. This is a key difference from SQL.
-// I've left this commented out as it requires a deeper design choice.
-/*
-app.get('/voiceovers/category/:id', async (req, res) => {
-  // To do this in DynamoDB, you'd likely use a Global Secondary Index (GSI)
-  // on 'category_id' and query that index.
-  res.status(501).json({ message: 'Not implemented for DynamoDB yet' });
-});
-*/
-/* ==========================================
+
    7. Search Voiceovers (Refactored for DynamoDB)
+
    ========================================== */
 app.get('/voiceovers/search', async (req, res) => {
     try {
@@ -222,19 +241,16 @@ app.get('/voiceovers/search', async (req, res) => {
     }
 });
 /* ===================
-   8. Start the server (Sync removed)
+
+   8. Serverless Handler
+
    =================== */
-const PORT = process.env.PORT || 3000; // Use the environment variable, default to 3000
 export const handler = serverless(app, {
     binary: [
         'audio/mpeg',
         'audio/mp3',
-        '*/*', // Catch-all for safety, but audio/mpeg is the focus
+        'image/*', // Added for thumbnail route
+        '*/*',
     ],
 });
-//not sure if we'll need this again:
-/*app.listen(PORT, async () => {
-    console.log(`Server running on port ${PORT}`);
-  console.log('Using S3 Bucket:', BUCKET_NAME);
-  console.log('Using DynamoDB Table:', TABLE_NAME);
-});*/ 
+//# sourceMappingURL=server.js.map

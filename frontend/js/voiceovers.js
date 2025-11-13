@@ -1,10 +1,12 @@
-const API_BASE_URL = 'https://mhj783ssme.execute-api.us-east-1.amazonaws.com';
+const API_BASE_URL = 'https://7r1zcfg22i.execute-api.us-east-1.amazonaws.com';
 
-// ------------------------------------------------------------------
-// 💥 NEW UPLOAD LOGIC: Uses Presigned URLs for direct S3 upload
-// ------------------------------------------------------------------
+// --- FUNCTION DEFINITIONS ---
+
+/**
+ * Handles the multi-step file upload process.
+ */
 async function uploadVoiceover(event) {
-    event.preventDefault();
+    event.preventDefault(); // Stop the default form submission (page reload)
 
     const form = document.getElementById('upload-form');
     const formData = new FormData(form);
@@ -25,8 +27,10 @@ async function uploadVoiceover(event) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
                 mp3FileName: mp3FileName, 
+                mp3ContentType: voiceoverFile.type,
                 thumbFileName: thumbFileName,
-                voiceover_name: voiceoverName, // Ensure keys match backend expectations
+                thumbContentType: thumbnailFile.type,
+                voiceover_name: voiceoverName,
                 project_date: projectDate 
             })
         });
@@ -56,7 +60,7 @@ async function uploadVoiceover(event) {
         // Success handling
         alert('Upload successful! Files are now being processed by S3.');
         form.reset();
-        loadVoiceovers();
+        loadVoiceovers(); // This call is OK because the function is defined below
 
     } catch (error) {
         console.error('Upload flow failed:', error);
@@ -64,14 +68,86 @@ async function uploadVoiceover(event) {
     }
 }
 
-// ------------------------------------------------------------------
-// Existing Code (Load, Search, Render)
-// ------------------------------------------------------------------
+/**
+ * Fetches the list of all voiceovers from the backend.
+ */
+async function loadVoiceovers() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/voiceovers`); 
+    const voiceovers = await res.json();
+    renderVoiceovers(voiceovers);
+  } catch (err) {
+    console.error('Error loading voiceovers:', err);
+  }
+}
 
-// Add event listener for your upload form (assuming its ID is 'upload-form')
+/**
+ * Fetches a filtered list based on a search query.
+ */
+async function searchVoiceovers(query) {
+  try {
+    const res = await fetch(
+      `${API_BASE_URL}/voiceovers/search?q=${encodeURIComponent(query)}`
+    );
+    const voiceovers = await res.json();
+    renderVoiceovers(voiceovers);
+  } catch (err) {
+    console.error('Error searching voiceovers:', err);
+  }
+}
+
+/**
+ * Renders the list of voiceovers (with thumbnails) to the DOM.
+ */
+function renderVoiceovers(voiceovers) {
+  const container = document.getElementById('voiceover-list');
+  container.innerHTML = ''; 
+
+  if (voiceovers.length === 0) {
+    container.innerHTML = '<p>No matching voiceovers found.</p>';
+    return;
+  }
+
+  voiceovers.forEach((voice) => {
+    // 💥 This is where the 'div' variable must be defined
+    const div = document.createElement('div');
+    div.className = 'voiceover';
+
+    const thumbnailUrl = `${API_BASE_URL}/thumbnail/${encodeURIComponent(voice.thumbnail_key)}`;
+    
+    div.innerHTML = `
+      <div class="voiceover-content">
+        <img src="${thumbnailUrl}" alt="${voice.voiceover_name} thumbnail" style="width: 100px; height: 100px; object-fit: cover;">
+        <div class="voiceover-details">
+          <p>${voice.voiceover_name} (${new Date(
+            voice.project_date
+          ).toLocaleDateString()})</p>
+          <audio controls>
+            <source src="${API_BASE_URL}/stream/${encodeURIComponent(voice.file_name)}" type="audio/mpeg">
+            Your browser does not support the audio element.
+          </audio>
+        </div>
+      </div>
+    `;
+    container.appendChild(div);
+  });
+}
+
+
+// --- EVENT LISTENERS (Must be at the bottom) ---
+
+// Listen for input in the search bar
+document.getElementById('search-bar').addEventListener('input', (e) => {
+  const query = e.target.value.trim();
+  if (query === '') {
+    loadVoiceovers();
+  } else {
+    searchVoiceovers(query);
+  }
+});
+
+// Add event listener for your upload form
 document.getElementById('upload-form').addEventListener('submit', uploadVoiceover);
-
-// ... (loadVoiceovers, searchVoiceovers, renderVoiceovers functions remain the same) ...
 
 // Load voiceovers when page loads
 window.addEventListener('DOMContentLoaded', loadVoiceovers);

@@ -1,6 +1,6 @@
 // backend/syncS3.ts
 
-import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
+/*import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { v4 as uuidv4 } from 'uuid';
 
 // IMPORTANT: This uses the DynamoDB Document Client, which is typically easier 
@@ -42,4 +42,4 @@ export const handler = async (event: any) => {
     }
 
     return { statusCode: 200, body: 'S3 files processed' };
-};
+}; */

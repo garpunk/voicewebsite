@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "noEmit": true,
+    
     "target": "ES2020",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
@@ -11,7 +11,7 @@
     "outDir": "dist",
     "sourceMap": true
   },
-  "include": ["backend/**/*.ts"],
+  "include": ["backend/**/*.ts", "backend/server.ts", "backend/db.ts"],
   "exclude": ["node_modules"],
   
 }

@@ -7,3 +7,4 @@ const client = new DynamoDBClient({ region: REGION });
 // This "DocumentClient" makes it easier to work with JSON objects
 const db = DynamoDBDocumentClient.from(client);
 export default db;
+//# sourceMappingURL=db.js.map

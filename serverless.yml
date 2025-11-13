@@ -3,12 +3,33 @@ service: voiceover-api
 provider:
   name: aws
   runtime: nodejs20.x
-  region: us-east-1 # Or your preferred region
+  region: us-east-1
   stage: dev
   profile: serverless-user
+
+  # 💥 MERGED ENVIRONMENT BLOCK 💥
   environment:
-    S3_BUCKET_NAME: my-voiceover-uploads-2025 # 👈 PUT YOUR S3 UPLOAD BUCKET NAME HERE
-    DYNAMODB_TABLE_NAME: Voiceovers # 👈 PUT YOUR DYNAMODB TABLE NAME HERE
+    S3_BUCKET_NAME: my-voiceover-uploads-2025
+    DYNAMODB_TABLE_NAME: Voiceovers
+    # This ENV VAR is for server.ts
+    FRONTEND_URL: http://my-voiceover-frontend-2025.s3-website-us-east-1.amazonaws.com
+
+  # 💥 HTTP API CORS CONFIGURATION 💥
+  httpApi:
+    cors:
+      allowedOrigins:
+        # Use your S3 website endpoint URL
+        - http://my-voiceover-frontend-2025.s3-website-us-east-1.amazonaws.com
+      allowedHeaders:
+        - Content-Type
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - HEAD
+        - OPTIONS
+      allowCredentials: true
 
   # Grant your Lambda function permission to access S3 and DynamoDB
   iam:
@@ -37,18 +58,22 @@ functions:
   api:
     handler: dist/server.handler
     events:
-      # Use httpApi for a modern API Gateway (note: CORS is handled by Express/server.ts)
-      - httpApi: "*"
-      # You can remove the 'cors: true' line here as it won't work for httpApi events
+      # This explicitly catches all paths (like /voiceovers, /upload-request, etc.)
+      # and all methods (GET, POST, PUT, etc.)
+      - httpApi:
+          method: "*" # Catches ANY method
+          path: "*" # Catches all paths
+
 
   # 2. New Sync Function (for automation)
-  syncS3Metadata:
-    handler: dist/syncS3.handler # 👈 Handler for S3 events
-    events:
-      - s3:
-          bucket: ${self:provider.environment.S3_BUCKET_NAME}
-          event: s3:ObjectCreated:*
-          existing: true
-          rules:
-            # Only trigger for MP3 uploads
-            - suffix: .mp3
+  # syncS3Metadata:
+  #  handler: dist/syncS3.handler # 👈 Handler for S3 events
+  # events:
+  #  - s3:
+  #     bucket: ${self:provider.environment.S3_BUCKET_NAME}
+  #    event: s3:ObjectCreated:*
+  #   existing: true
+  #  rules:
+  # Only trigger for MP3 uploads
+  #   - suffix: .mp3
+#change test

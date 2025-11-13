@@ -4,10 +4,10 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "ts-node backend/server.ts",
+    "dev": "npm run build && node dist/server.js",
     "build": "tsc",
     "start": "node dist/server.js",
-    "deploy:frontend": "aws s3 sync ./frontend s3://my-voiceover-frontend-2025 --delete --acl public-read",
+    "deploy:frontend": "aws s3 sync ./frontend s3://my-voiceover-frontend-2025 --delete",
     "deploy:full": "npm run build && sls deploy && npm run deploy:frontend"
   },
   "keywords": [],
