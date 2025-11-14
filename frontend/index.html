@@ -1,39 +1,96 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
+<html lang="en" class="dark"> <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Voiceovers</title>
-    <link rel="stylesheet" href="css/style.css" />
-    <style></style>
-  </head>
-  <body>
-    <h1>Voiceover Library</h1>
-    <div class="topnav">
-      <input id="search-bar" type="text" placeholder="Search.." />
+    <title>Voiceover Library</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap" rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              poppins: ['Poppins', 'sans-serif']
+            },
+            colors: {
+              'accent': '#25ffff',
+              'dark-text': '#e4e4e7',
+              'dark-text-secondary': '#71717a',
+              'dark-bg': '#27272a',
+              'dark-bg-secondary': '#3f3f46',
+              'dark-bg-tertiary': '#52525b',
+            }
+          }
+        }
+      }
+    </script>
+    
+    </head>
+  
+  <body class="bg-dark-bg text-dark-text font-poppins antialiased">
+
+    <div class="container mx-auto p-4 max-w-6xl">
+      
+      <h1 class="text-4xl font-bold text-center text-accent mb-8">
+        Voiceover Library
+      </h1>
+      
+      <div class="topnav mb-8">
+        <input 
+          id="search-bar" 
+          type="text" 
+          placeholder="Search..." 
+          class="w-full p-3 bg-dark-bg-tertiary text-dark-text rounded-lg border-2 border-dark-bg-secondary focus:border-accent focus:ring-0 outline-none" 
+        />
+      </div>
+
+      <div class="upload-container bg-dark-bg-secondary p-6 rounded-lg shadow-md mb-8">
+        <h2 class="text-2xl font-semibold mb-4">Add New Voiceover</h2>
+        <form id="upload-form" enctype="multipart/form-data" class="space-y-4">
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label for="voiceover-name" class="block text-sm font-medium text-dark-text-secondary">Voiceover Name:</label>
+              <input type="text" id="voiceover-name" name="voiceover_name" required 
+                     class="w-full p-2 mt-1 bg-dark-bg-tertiary rounded-md border border-dark-bg-tertiary focus:border-accent focus:ring-0 outline-none" />
+            </div>
+            <div>
+              <label for="project-date" class="block text-sm font-medium text-dark-text-secondary">Project Date:</label>
+              <input type="date" id="project-date" name="project_date" required 
+                     class="w-full p-2 mt-1 bg-dark-bg-tertiary rounded-md border border-dark-bg-tertiary focus:border-accent focus:ring-0 outline-none" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label for="voiceover-file" class="block text-sm font-medium text-dark-text-secondary">MP3 File (voiceover):</label>
+              <input type="file" id="voiceover-file" name="voiceover" accept="audio/mpeg,audio/mp3" required 
+                     class="w-full text-sm text-dark-text-secondary file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-accent file:text-dark-bg hover:file:bg-opacity-80"/>
+            </div>
+            <div>
+              <label for="thumbnail-file" class="block text-sm font-medium text-dark-text-secondary">Thumbnail Image:</label>
+              <input type="file" id="thumbnail-file" name="thumbnail" accept="image/*" required 
+                     class="w-full text-sm text-dark-text-secondary file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-accent file:text-dark-bg hover:file:bg-opacity-80"/>
+            </div>
+          </div>
+
+          <button type="submit" 
+                  class="w-full bg-accent text-dark-bg font-bold py-3 px-4 rounded-lg hover:bg-opacity-80 transition-colors">
+            Upload Voiceover
+          </button>
+        </form>
+      </div>
+
+      <div id="voiceover-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 place-items-center">
+        </div>
+
     </div>
-
-    <div class="upload-container">
-      <h2>Add New Voiceover & Thumbnail</h2>
-      <form id="upload-form" enctype="multipart/form-data">
-        
-        <label for="voiceover-name">Voiceover Name:</label>
-        <input type="text" id="voiceover-name" name="voiceover_name" required /><br />
-
-        <label for="project-date">Project Date:</label>
-        <input type="date" id="project-date" name="project_date" required /><br />
-
-        <label for="voiceover-file">MP3 File (voiceover):</label>
-        <input type="file" id="voiceover-file" name="voiceover" accept="audio/mpeg,audio/mp3" required /><br />
-
-        <label for="thumbnail-file">Thumbnail Image:</label>
-        <input type="file" id="thumbnail-file" name="thumbnail" accept="image/*" required /><br />
-
-        <button type="submit">Upload Voiceover</button>
-      </form>
-      <hr>
-    </div>
-    <div id="voiceover-list"></div>
 
     <script src="js/voiceovers.js"></script>
   </body>

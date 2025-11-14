@@ -1,4 +1,4 @@
-const API_BASE_URL = 'https://7r1zcfg22i.execute-api.us-east-1.amazonaws.com';
+const API_BASE_URL = 'https://wv1xil0282.execute-api.us-east-1.amazonaws.com';
 
 // --- FUNCTION DEFINITIONS ---
 
@@ -81,6 +81,32 @@ async function loadVoiceovers() {
   }
 }
 
+async function deleteVoiceover(id) {
+  // 1. Confirm with the user
+  if (!confirm('Are you sure you want to delete this voiceover?')) {
+    return;
+  }
+
+  try {
+    // 2. Send the DELETE request to the backend
+    const response = await fetch(`${API_BASE_URL}/voiceover/${id}`, {
+      method: 'DELETE',
+    });
+
+    const result = await response.json();
+
+    if (response.ok) {
+      alert(result.message);
+      loadVoiceovers(); // 3. Refresh the list
+    } else {
+      alert(`Error: ${result.error}`);
+    }
+  } catch (err) {
+    console.error('Failed to delete voiceover:', err);
+    alert('An error occurred. Check the console.');
+  }
+}
+
 /**
  * Fetches a filtered list based on a search query.
  */
@@ -99,6 +125,8 @@ async function searchVoiceovers(query) {
 /**
  * Renders the list of voiceovers (with thumbnails) to the DOM.
  */
+
+
 function renderVoiceovers(voiceovers) {
   const container = document.getElementById('voiceover-list');
   container.innerHTML = ''; 
@@ -109,25 +137,39 @@ function renderVoiceovers(voiceovers) {
   }
 
   voiceovers.forEach((voice) => {
-    // 💥 This is where the 'div' variable must be defined
+    // 1. Create the main div
     const div = document.createElement('div');
-    div.className = 'voiceover';
+    // 2. Apply Tailwind classes for styling and centering
+    div.className = 'bg-dark-bg-secondary rounded-lg shadow-lg overflow-hidden w-full max-w-xs flex flex-col items-center p-4';
 
+    // 3. Construct the thumbnail URL
     const thumbnailUrl = `${API_BASE_URL}/thumbnail/${encodeURIComponent(voice.thumbnail_key)}`;
     
+    // 4. Set the inner HTML with Tailwind classes
     div.innerHTML = `
-      <div class="voiceover-content">
-        <img src="${thumbnailUrl}" alt="${voice.voiceover_name} thumbnail" style="width: 100px; height: 100px; object-fit: cover;">
-        <div class="voiceover-details">
-          <p>${voice.voiceover_name} (${new Date(
-            voice.project_date
-          ).toLocaleDateString()})</p>
-          <audio controls>
-            <source src="${API_BASE_URL}/stream/${encodeURIComponent(voice.file_name)}" type="audio/mpeg">
-            Your browser does not support the audio element.
-          </audio>
-        </div>
+      <img src="${thumbnailUrl}" alt="${voice.voiceover_name} thumbnail" 
+           class="w-48 h-48 object-cover rounded-md mb-4 shadow-md">
+      
+      <div class="text-center">
+        <p class="text-lg font-semibold text-dark-text truncate w-60" title="${voice.voiceover_name}">
+          ${voice.voiceover_name}
+        </p>
+        <p class="text-sm text-dark-text-secondary mb-3">
+          ${new Date(voice.project_date).toLocaleDateString()}
+        </p>
       </div>
+      
+      <audio controls preload="metadata" class="w-full">
+        <source src="${API_BASE_URL}/stream/${encodeURIComponent(voice.file_name)}" type="audio/mpeg">
+        Your browser does not support the audio element.
+      </audio>
+
+      <button 
+        class="delete-btn bg-red-600 text-white w-full py-2 px-4 rounded-lg hover:bg-red-700 transition-colors mt-4"
+        data-id="${voice.id}"
+      >
+        Delete
+      </button>
     `;
     container.appendChild(div);
   });
@@ -150,4 +192,16 @@ document.getElementById('search-bar').addEventListener('input', (e) => {
 document.getElementById('upload-form').addEventListener('submit', uploadVoiceover);
 
 // Load voiceovers when page loads
-window.addEventListener('DOMContentLoaded', loadVoiceovers);
+window.addEventListener('DOMContentLoaded', () => {
+  loadVoiceovers(); // This line is already here
+
+  
+  const listContainer = document.getElementById('voiceover-list');
+  listContainer.addEventListener('click', (event) => {
+    // Check if the clicked element is a delete button
+    if (event.target.classList.contains('delete-btn')) {
+      const voiceoverId = event.target.dataset.id;
+      deleteVoiceover(voiceoverId);
+    }
+  });
+});

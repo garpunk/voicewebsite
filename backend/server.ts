@@ -31,6 +31,7 @@ import {
   S3Client,
 
   GetObjectCommand,
+  DeleteObjectCommand,
 
 } from '@aws-sdk/client-s3';
 
@@ -41,6 +42,8 @@ import {
   ScanCommand,
 
   QueryCommandInput,
+  GetCommand,
+  DeleteCommand,
 
 } from '@aws-sdk/lib-dynamodb';
 
@@ -489,6 +492,61 @@ app.get('/voiceovers/search', async (req, res) => {
       },
 
     };
+
+    /* ==========================================
+   8. Delete a Voiceover
+   ========================================== */
+app.delete('/voiceover/:id', async (req, res) => {
+  const { id } = req.params;
+
+  if (!id) {
+    return res.status(400).json({ error: 'Missing voiceover ID.' });
+  }
+
+  try {
+    // 1. Get the item from DynamoDB to find the file keys
+    const getParams = {
+      TableName: TABLE_NAME,
+      Key: { id },
+    };
+    const data = await db.send(new GetCommand(getParams));
+
+    if (!data.Item) {
+      return res.status(404).json({ error: 'Voiceover not found.' });
+    }
+
+    const { file_name, thumbnail_key } = data.Item;
+
+    // 2. Delete the MP3 from S3
+    if (file_name) {
+      await s3Client.send(new DeleteObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: file_name,
+      }));
+    }
+
+    // 3. Delete the Thumbnail from S3
+    if (thumbnail_key) {
+      await s3Client.send(new DeleteObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: thumbnail_key,
+      }));
+    }
+
+    // 4. Delete the item from DynamoDB
+    await db.send(new DeleteCommand(getParams)); // Re-uses the same params
+
+    res.json({ message: 'Voiceover deleted successfully!' });
+
+  } catch (err) {
+    console.error('❌ Error in /voiceover/delete route:', err);
+    if (err instanceof Error) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.status(500).json({ error: String(err) });
+    }
+  }
+});
 
 
 

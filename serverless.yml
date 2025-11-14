@@ -2,78 +2,95 @@ service: voiceover-api
 
 provider:
   name: aws
+
   runtime: nodejs20.x
+
   region: us-east-1
+
   stage: dev
+
   profile: serverless-user
 
-  # 💥 MERGED ENVIRONMENT BLOCK 💥
   environment:
     S3_BUCKET_NAME: my-voiceover-uploads-2025
+
     DYNAMODB_TABLE_NAME: Voiceovers
-    # This ENV VAR is for server.ts
+
     FRONTEND_URL: http://my-voiceover-frontend-2025.s3-website-us-east-1.amazonaws.com
 
-  # 💥 HTTP API CORS CONFIGURATION 💥
+  # This is the single, correct block for HTTP API config
+
   httpApi:
-    cors:
+    payload: "2.0" # This was from your line 9
+
+    cors: # This was from your line 19
       allowedOrigins:
-        # Use your S3 website endpoint URL
         - http://my-voiceover-frontend-2025.s3-website-us-east-1.amazonaws.com
+
       allowedHeaders:
         - Content-Type
+
       allowedMethods:
         - GET
+
         - POST
+
         - PUT
+
         - DELETE
+
         - HEAD
+
         - OPTIONS
+
       allowCredentials: true
 
-  # Grant your Lambda function permission to access S3 and DynamoDB
   iam:
     role:
       statements:
         - Effect: "Allow"
+
           Action:
             - "dynamodb:Scan"
+
             - "dynamodb:PutItem"
+
+            - "dynamodb:GetItem"
+
+            - "dynamodb:DeleteItem"
+
           Resource: "arn:aws:dynamodb:${aws:region}:*:table/${self:provider.environment.DYNAMODB_TABLE_NAME}"
+
         - Effect: "Allow"
+
           Action:
             - "s3:PutObject"
+
             - "s3:GetObject"
+
+            - "s3:DeleteObject"
+
           Resource: "arn:aws:s3:::${self:provider.environment.S3_BUCKET_NAME}/*"
 
 package:
   patterns:
-    # - "!node_modules/**" # Exclude node_modules from the zip (it will be installed by AWS)
     - "!frontend/**"
+
     - "!.vscode/**"
+
     - "!.git/**"
 
 functions:
   # 1. Main API Function (Existing)
+
   api:
     handler: dist/server.handler
+
     events:
-      # This explicitly catches all paths (like /voiceovers, /upload-request, etc.)
-      # and all methods (GET, POST, PUT, etc.)
       - httpApi:
           method: "*" # Catches ANY method
+
           path: "*" # Catches all paths
 
 
-  # 2. New Sync Function (for automation)
-  # syncS3Metadata:
-  #  handler: dist/syncS3.handler # 👈 Handler for S3 events
-  # events:
-  #  - s3:
-  #     bucket: ${self:provider.environment.S3_BUCKET_NAME}
-  #    event: s3:ObjectCreated:*
-  #   existing: true
-  #  rules:
-  # Only trigger for MP3 uploads
-  #   - suffix: .mp3
-#change test
+  # 2. syncS3Metadata function has been REMOVED

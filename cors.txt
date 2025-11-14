@@ -1,0 +1,15 @@
+it wanted us to remove this:
+
+ cors:
+      allowedOrigins:
+        - http://my-voiceover-frontend-2025.s3-website-us-east-1.amazonaws.com
+      allowedHeaders:
+        - Content-Type
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - HEAD
+        - OPTIONS
+      allowCredentials: true
