@@ -18,33 +18,9 @@ provider:
 
     FRONTEND_URL: http://my-voiceover-frontend-2025.s3-website-us-east-1.amazonaws.com
 
-  # This is the single, correct block for HTTP API config
+ 
 
-  httpApi:
-    payload: "2.0" # This was from your line 9
-
-    cors: # This was from your line 19
-      allowedOrigins:
-        - http://my-voiceover-frontend-2025.s3-website-us-east-1.amazonaws.com
-
-      allowedHeaders:
-        - Content-Type
-
-      allowedMethods:
-        - GET
-
-        - POST
-
-        - PUT
-
-        - DELETE
-
-        - HEAD
-
-        - OPTIONS
-
-      allowCredentials: true
-
+  
   iam:
     role:
       statements:
@@ -93,4 +69,4 @@ functions:
           path: "*" # Catches all paths
 
 
-  # 2. syncS3Metadata function has been REMOVED
+  
