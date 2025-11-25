@@ -236,101 +236,38 @@ app.post('/upload-request', async (req, res) => {
    ======================== */
 
 app.get('/stream/:filename', async (req, res) => {
-
   try {
-
+    // 1. Decode the filename to handle spaces and special characters
     let encodedFilename = req.params.filename.replace(/\+/g, '%20');
-
-
-
     const filename = decodeURIComponent(encodedFilename);
 
-
-
-    // Check if the file has any slashes (to avoid directory traversal)
-
+    // Security check
     if (filename.includes('/') || filename.includes('..')) {
-
       return res.status(400).send('Invalid filename.');
-
     }
 
-
-
-    const s3Params = {
-
+    // 2. Create the command to GET the file
+    const command = new GetObjectCommand({
       Bucket: BUCKET_NAME,
-
       Key: filename,
+    });
 
-    };
+    // 3. Generate a secure, temporary URL (valid for 1 hour)
+    // This is lightweight; it returns a string, not the file data.
+    const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
 
-
-
-    const s3Object = await s3Client.send(new GetObjectCommand(s3Params));
-
-
-
-    // --- THIS IS THE FIX ---
-
-    // Check if the body exists and is an instance of a readable stream
-
-    if (s3Object.Body instanceof Readable) {
-
-      // Set headers for streaming audio
-
-      res.writeHead(200, {
-
-        'Content-Type': s3Object.ContentType || 'audio/mpeg',
-
-        'Content-Length': s3Object.ContentLength || 0,
-
-        'Accept-Ranges': 'bytes',
-
-        'Content-Disposition': `inline; filename="${req.params.filename}"`,
-
-      });
-
-
-
-      // Pipe the S3 stream directly to the response
-
-      s3Object.Body.pipe(res);
-
-    } else {
-
-      // Handle the case where the body isn't a stream
-
-      throw new Error('S3 object body is not a readable stream.');
-
-    }
-
-    // --- END FIX ---
-
-
+    // 4. Redirect the browser to S3
+    // The browser will automatically follow this link and stream the MP3 from S3 directly.
+    res.redirect(url);
 
   } catch (err) {
-
-    // Handle "NoSuchKey" error if file not found in S3
-
-    if (err instanceof Error && err.name === 'NoSuchKey') {
-
-      return res.status(404).send('File not found');
-
-    }
-
+    console.error('Stream error:', err);
     if (err instanceof Error) {
-
       res.status(500).json({ error: err.message });
-
     } else {
-
       res.status(500).json({ error: String(err) });
-
     }
-
   }
-
 });
 
 
@@ -442,60 +379,47 @@ app.get('/voiceovers', async (req, res) => {
 
 
 /* ==========================================
-
    7. Search Voiceovers (Refactored for DynamoDB)
-
    ========================================== */
-
 app.get('/voiceovers/search', async (req, res) => {
-
   try {
-
     const { q } = req.query;
 
-
-
     if (!q) {
-
       // If no query, just return all (same as /voiceovers)
-
       const data = await db.send(new ScanCommand({ TableName: TABLE_NAME }));
-
       return res.json(data.Items);
-
     }
-
-
 
     const searchTerm = String(q).toLowerCase();
 
-
-
-    // In DynamoDB, 'Scan' is less efficient for search as it reads all items.
-
-    // A better way is using a full-text search service like OpenSearch,
-
-    // but for a small app, a Scan with a FilterExpression is fine.
-
-    const params: QueryCommandInput = {
-
+    // We'll have to adjust if 'description' doesn't exist.
+    // For simplicity, let's just search 'voiceover_name'
+    const simpleParams = {
       TableName: TABLE_NAME,
-
-      FilterExpression:
-
-        'contains(voiceover_name, :q) OR contains(description, :q)', // Assuming 'description' might exist
-
+      FilterExpression: 'contains(voiceover_name, :q)',
       ExpressionAttributeValues: {
-
         ':q': searchTerm,
-
       },
-
     };
 
-    /* ==========================================
+    const data = await db.send(new ScanCommand(simpleParams));
+    res.json(data.Items);
+  } catch (err) {
+    console.error('❌ Error in /voiceovers/search route:', err);
+    if (err instanceof Error) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.status(500).json({ error: String(err) });
+    }
+  }
+}); // 👈 **FIX:** THE GET ROUTE ENDS HERE.
+
+
+/* ==========================================
    8. Delete a Voiceover
    ========================================== */
+// **FIX:** THIS IS NOW A SEPARATE, TOP-LEVEL ROUTE.
 app.delete('/voiceover/:id', async (req, res) => {
   const { id } = req.params;
 
@@ -549,71 +473,14 @@ app.delete('/voiceover/:id', async (req, res) => {
 });
 
 
-
-    // We'll have to adjust if 'description' doesn't exist.
-
-    // For simplicity, let's just search 'voiceover_name'
-
-    const simpleParams = {
-
-      TableName: TABLE_NAME,
-
-      FilterExpression: 'contains(voiceover_name, :q)',
-
-      ExpressionAttributeValues: {
-
-        ':q': searchTerm,
-
-      },
-
-    };
-
-
-
-    const data = await db.send(new ScanCommand(simpleParams));
-
-    res.json(data.Items);
-
-  } catch (err) {
-
-    console.error('❌ Error in /voiceovers/search route:', err);
-
-    if (err instanceof Error) {
-
-      res.status(500).json({ error: err.message });
-
-    } else {
-
-      res.status(500).json({ error: String(err) });
-
-    }
-
-  }
-
-});
-
-
-
-
-
 /* ===================
-
-   8. Serverless Handler
-
+   8. Serverless Handler (Now section 9)
    =================== */
-
 export const handler = serverless(app, {
-
     binary: [
-
         'audio/mpeg',
-
         'audio/mp3',
-
         'image/*', // Added for thumbnail route
-
         '*/*',
-
     ],
-
 });

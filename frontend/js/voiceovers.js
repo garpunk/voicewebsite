@@ -1,4 +1,4 @@
-const API_BASE_URL = 'https://wv1xil0282.execute-api.us-east-1.amazonaws.com';
+const API_BASE_URL = 'https://0j4mz21823.execute-api.us-east-1.amazonaws.com';
 
 // --- FUNCTION DEFINITIONS ---
 
@@ -159,7 +159,7 @@ function renderVoiceovers(voiceovers) {
         </p>
       </div>
       
-      <audio controls preload="metadata" class="w-full">
+      <audio controls preload="none" class="w-full">
         <source src="${API_BASE_URL}/stream/${encodeURIComponent(voice.file_name)}" type="audio/mpeg">
         Your browser does not support the audio element.
       </audio>
@@ -205,3 +205,12 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
+
+document.addEventListener('play', function(e){
+    var audios = document.getElementsByTagName('audio');
+    for(var i = 0, len = audios.length; i < len;i++){
+        if(audios[i] != e.target){
+            audios[i].pause();
+        }
+    }
+}, true);
