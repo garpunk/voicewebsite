@@ -2,71 +2,123 @@ service: voiceover-api
 
 provider:
   name: aws
-
   runtime: nodejs20.x
-
   region: us-east-1
-
   stage: dev
-
   profile: serverless-user
 
   environment:
     S3_BUCKET_NAME: my-voiceover-uploads-2025
-
     DYNAMODB_TABLE_NAME: Voiceovers
-
     FRONTEND_URL: http://my-voiceover-frontend-2025.s3-website-us-east-1.amazonaws.com
 
- 
+  # 💥 CHANGE 1: Configure the Authorizer in HTTP API
+  httpApi:
+    cors:
+      allowedOrigins:
+        - http://my-voiceover-frontend-2025.s3-website-us-east-1.amazonaws.com
+      allowedHeaders:
+        - Content-Type
+        - Authorization # Allow the Authorization header for login tokens
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - HEAD
+        - OPTIONS
+      allowCredentials: true
+    
+    # Define the Security Guard (Cognito)
+    authorizers:
+      jwtAuthorizer:
+        type: jwt
+        identitySource: $request.header.Authorization
+        # Construct the Issuer URL dynamically using CloudFormation
+        issuerUrl: !Join ["", ["https://cognito-idp.", "${self:provider.region}", ".amazonaws.com/", !Ref VoiceoverUserPool]]
+        audience:
+          - !Ref VoiceoverUserPoolClient
 
-  
   iam:
     role:
       statements:
         - Effect: "Allow"
-
           Action:
             - "dynamodb:Scan"
-
             - "dynamodb:PutItem"
-
             - "dynamodb:GetItem"
-
             - "dynamodb:DeleteItem"
-
           Resource: "arn:aws:dynamodb:${aws:region}:*:table/${self:provider.environment.DYNAMODB_TABLE_NAME}"
-
         - Effect: "Allow"
-
           Action:
             - "s3:PutObject"
-
             - "s3:GetObject"
-
             - "s3:DeleteObject"
-
           Resource: "arn:aws:s3:::${self:provider.environment.S3_BUCKET_NAME}/*"
 
 package:
   patterns:
     - "!frontend/**"
-
     - "!.vscode/**"
-
     - "!.git/**"
 
 functions:
-  # 1. Main API Function (Existing)
-
   api:
     handler: dist/server.handler
-
+    # 💥 CHANGE 2: Split routes into Public vs. Private
     events:
+      # --- PUBLIC ROUTES (Anyone can view/listen) ---
       - httpApi:
-          method: "*" # Catches ANY method
+          method: GET
+          path: /voiceovers
+      - httpApi:
+          method: GET
+          path: /voiceovers/search
+      - httpApi:
+          method: GET
+          path: /stream/{filename}
+      - httpApi:
+          method: GET
+          path: /thumbnail/{key}
+      
+      # --- PRIVATE ROUTES (Require Login) ---
+      - httpApi:
+          method: POST
+          path: /upload-request
+          authorizer:
+            name: jwtAuthorizer # Connects to the config in 'provider'
+      - httpApi:
+          method: DELETE
+          path: /voiceover/{id}
+          authorizer:
+            name: jwtAuthorizer
 
-          path: "*" # Catches all paths
+# 💥 CHANGE 3: Create the Cognito Resources
+resources:
+  Resources:
+    # The User Directory
+    VoiceoverUserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: voiceover-user-pool-${self:provider.stage}
+        UsernameAttributes: [email]
+        AutoVerifiedAttributes: [email]
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 8
+            RequireLowercase: true
+            RequireNumbers: true
+            RequireSymbols: false
+            RequireUppercase: true
 
-
-  
+    # The App Client (Allows your website to talk to Cognito)
+    VoiceoverUserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: voiceover-web-client
+        UserPoolId: !Ref VoiceoverUserPool
+        ExplicitAuthFlows:
+          - ALLOW_USER_PASSWORD_AUTH
+          - ALLOW_REFRESH_TOKEN_AUTH
+          - ALLOW_USER_SRP_AUTH
+        PreventUserExistenceErrors: ENABLED

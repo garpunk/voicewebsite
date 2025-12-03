@@ -50,3 +50,12 @@ _Note: Add more rows as needed._
 |TP - Team Project              |          4 hours         |
 |MTG - Class Meetings           |         4 hours          |
 |**TOTAL**                      |        18 hours          |
+
+
+
+
+aws cognito-idp admin-set-user-password \
+    --user-pool-id "us-east-1_1CF3QnJN1" \
+    --username "garrettchelms1008@gmail.com" \
+    --password "NewPassword123!" \
+    --permanent

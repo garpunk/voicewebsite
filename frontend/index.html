@@ -40,17 +40,73 @@
       <h1 class="text-4xl font-bold text-center text-accent mb-8">
         Voiceover Library
       </h1>
-      
-      <div class="topnav mb-8">
-        <input 
-          id="search-bar" 
-          type="text" 
-          placeholder="Search..." 
-          class="w-full p-3 bg-dark-bg-tertiary text-dark-text rounded-lg border-2 border-dark-bg-secondary focus:border-accent focus:ring-0 outline-none" 
-        />
-      </div>
+      <!--allows advanced search-->
+     <div class="mb-8">
+  <div class="relative mb-4">
+    <input 
+      id="search-bar" 
+      type="text" 
+      placeholder="Search by name..." 
+      class="w-full p-3 bg-dark-bg-tertiary text-dark-text rounded-lg border-2 border-dark-bg-secondary focus:border-accent focus:ring-0 outline-none shadow-md transition-all"
+    />
+  </div>
 
-      <div class="upload-container bg-dark-bg-secondary p-6 rounded-lg shadow-md mb-8">
+  <details class="group bg-dark-bg-secondary rounded-lg shadow-md overflow-hidden border border-dark-bg-tertiary">
+    <summary class="flex items-center justify-between cursor-pointer p-4 font-semibold text-dark-text hover:bg-dark-bg-tertiary transition-colors list-none select-none">
+      <span class="flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+        </svg>
+        Advanced Search & Filters
+      </span>
+      <span class="transition-transform duration-300 group-open:rotate-180">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-dark-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        </svg>
+      </span>
+    </summary>
+    
+    <div class="p-4 border-t border-dark-bg-tertiary grid grid-cols-1 md:grid-cols-2 gap-4 bg-dark-bg">
+      <div>
+        <label for="start-date" class="block text-sm font-medium text-dark-text-secondary mb-1">Start Date</label>
+        <input type="date" id="start-date" class="w-full p-2 bg-dark-bg-tertiary text-dark-text rounded-md border border-dark-bg-secondary focus:border-accent outline-none" />
+      </div>
+      <div>
+        <label for="end-date" class="block text-sm font-medium text-dark-text-secondary mb-1">End Date</label>
+        <input type="date" id="end-date" class="w-full p-2 bg-dark-bg-tertiary text-dark-text rounded-md border border-dark-bg-secondary focus:border-accent outline-none" />
+      </div>
+      
+      <div class="md:col-span-2 flex justify-end gap-3 mt-2">
+        <button onclick="clearFilters()" class="px-4 py-2 text-sm font-semibold text-dark-text-secondary hover:text-white transition-colors">
+          Clear Filters
+        </button>
+        <button onclick="performSearch()" class="bg-accent text-dark-bg font-bold py-2 px-6 rounded-lg hover:bg-opacity-80 transition-all shadow-sm">
+          Apply Filters
+        </button>
+      </div>
+    </div>
+  </details>
+</div>
+
+      <!--Authentication html-->
+      <div id="auth-container" class="bg-dark-bg-secondary p-6 rounded-lg shadow-md mb-8 text-center">
+        <div id="login-form-div">
+            <h2 class="text-2xl font-semibold mb-4">Admin Login</h2>
+            <input type="text" id="username" placeholder="Email" class="p-2 rounded text-black mb-2 w-64">
+            <br>
+            <input type="password" id="password" placeholder="Password" class="p-2 rounded text-black mb-4 w-64">
+            <br>
+            <button onclick="login()" class="bg-accent text-dark-bg font-bold py-2 px-6 rounded hover:bg-opacity-80">Login</button>
+        </div>
+
+        <div id="logged-in-div" class="hidden">
+            <p class="text-green-400 mb-4 font-bold text-lg">Logged in as Admin</p>
+            <button onclick="logout()" class="bg-red-500 text-white py-2 px-4 rounded hover:bg-red-600">Logout</button>
+        </div>
+    </div>
+
+    <!--actual upload containers-->
+      <div id="upload-container" class="upload-container bg-dark-bg-secondary p-6 rounded-lg shadow-md mb-8 hidden">
         <h2 class="text-2xl font-semibold mb-4">Add New Voiceover</h2>
         <form id="upload-form" enctype="multipart/form-data" class="space-y-4">
           
