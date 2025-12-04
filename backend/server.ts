@@ -97,21 +97,7 @@ const s3Client = new S3Client({ region: process.env.AWS_REGION });
 
 
 
-/* ====================
 
-   1. Serve Frontend (Unchanged)
-
-   ==================== */
-
-//app.use(express.static(path.join(__dirname, '../frontend')));
-
-
-
-/* ====================
-
-   2. File Upload Setup (REMOVED: Multer logic is gone)
-
-   ==================== */
 
 
 
@@ -379,32 +365,58 @@ app.get('/voiceovers', async (req, res) => {
 
 
 /* ==========================================
-   7. Search Voiceovers (Refactored for DynamoDB)
+   7. Search Voiceovers (Advanced with Date Filter)
    ========================================== */
 app.get('/voiceovers/search', async (req, res) => {
   try {
-    const { q } = req.query;
+    // 1. Extract all query parameters
+    // We cast these to string/undefined because req.query can technically be arrays
+    const q = req.query.q as string | undefined;
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
 
-    if (!q) {
-      // If no query, just return all (same as /voiceovers)
+    // 2. Disable Caching
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Expires', '0');
+    res.set('Pragma', 'no-cache');
+
+    // 3. If NO filters are provided, return everything
+    if (!q && (!startDate || !endDate)) {
       const data = await db.send(new ScanCommand({ TableName: TABLE_NAME }));
       return res.json(data.Items);
     }
 
-    const searchTerm = String(q).toLowerCase();
+    // 4. Build the Filter Expression
+    const filters: string[] = [];
+    const values: Record<string, any> = {};
+    const names: Record<string, string> = {};
 
-    // We'll have to adjust if 'description' doesn't exist.
-    // For simplicity, let's just search 'voiceover_name'
-    const simpleParams = {
+    // Text Filter
+    if (q) {
+      filters.push('(contains(#vName, :q))');
+      values[':q'] = q.toLowerCase();
+      names['#vName'] = 'voiceover_name';
+    }
+
+    // Date Range Filter
+    if (startDate && endDate) {
+      filters.push('(#pDate BETWEEN :start AND :end)');
+      values[':start'] = startDate;
+      values[':end'] = endDate;
+      names['#pDate'] = 'project_date';
+    }
+
+    const params = {
       TableName: TABLE_NAME,
-      FilterExpression: 'contains(voiceover_name, :q)',
-      ExpressionAttributeValues: {
-        ':q': searchTerm,
-      },
+      FilterExpression: filters.join(' AND '),
+      ExpressionAttributeValues: values,
+      // Only include names if we actually added some
+      ExpressionAttributeNames: Object.keys(names).length > 0 ? names : undefined,
     };
 
-    const data = await db.send(new ScanCommand(simpleParams));
+    const data = await db.send(new ScanCommand(params));
     res.json(data.Items);
+
   } catch (err) {
     console.error('❌ Error in /voiceovers/search route:', err);
     if (err instanceof Error) {
@@ -413,7 +425,7 @@ app.get('/voiceovers/search', async (req, res) => {
       res.status(500).json({ error: String(err) });
     }
   }
-}); // 👈 **FIX:** THE GET ROUTE ENDS HERE.
+});
 
 
 /* ==========================================
